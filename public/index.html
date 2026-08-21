@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="id" class="h-full bg-slate-950 text-slate-100 font-sans antialiased">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Docker Local & Registry Monitor</title>
+  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'system-ui', '-apple-system', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'Consolas', 'monospace']
+          },
+          colors: {
+            docker: {
+              blue: '#099cec',
+              dark: '#0b1120',
+              card: '#1e293b',
+              accent: '#38bdf8'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+  </style>
+</head>
+<body class="h-full flex overflow-hidden font-sans antialiased bg-slate-950 text-slate-100">
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col space-y-3 pointer-events-none"></div>
+
+  <!-- Confirmation Modal -->
+  <div id="custom-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-slate-950/80 backdrop-blur-sm transition-opacity duration-200 opacity-0 pointer-events-none">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl transform scale-95 transition-transform duration-200" id="modal-card">
+      <div class="flex items-center space-x-3 text-rose-400 mb-4">
+        <div class="p-3 bg-rose-500/10 rounded-xl border border-rose-500/20" id="modal-icon-bg">
+          <i class="fa-solid fa-triangle-exclamation text-2xl" id="modal-icon"></i>
+        </div>
+        <h3 class="text-lg font-bold text-white" id="modal-title">Konfirmasi Tindakan</h3>
+      </div>
+      <p class="text-slate-300 text-sm mb-6 leading-relaxed" id="modal-message">Apakah Anda yakin ingin melanjutkan tindakan ini?</p>
+      <div class="flex justify-end space-x-3">
+        <button onclick="closeModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-semibold transition">Batal</button>
+        <button id="modal-confirm-btn" class="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-sm font-semibold transition shadow-lg shadow-rose-600/20">Eksekusi</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SIDEBAR NAVIGATION -->
+  <aside class="w-64 bg-slate-900 border-r border-slate-800/80 flex flex-col justify-between shrink-0">
+    <div>
+      <!-- Brand Logo -->
+      <div class="h-16 px-6 flex items-center space-x-3 border-b border-slate-800/80 bg-slate-900/50">
+        <div class="p-2 bg-sky-500/10 rounded-xl border border-sky-500/20">
+          <i class="fa-brands fa-docker text-2xl text-sky-400"></i>
+        </div>
+        <div>
+          <h1 class="text-base font-bold text-white tracking-wide leading-none">Docker Hub</h1>
+          <span class="text-[10px] text-sky-400 font-semibold tracking-wider uppercase">Local Manager</span>
+        </div>
+      </div>
+
+      <!-- Navigation Menu -->
+      <nav class="p-4 space-y-1.5">
+        <div class="px-3 py-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Navigation</div>
+        
+        <button onclick="switchView('overview')" id="nav-overview" class="nav-item w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-sky-400 bg-sky-500/10 border border-sky-500/20">
+          <i class="fa-solid fa-chart-pie w-5 text-center"></i>
+          <span>Dashboard Overview</span>
+        </button>
+
+        <div>
+          <button onclick="switchView('registry')" id="nav-registry" class="nav-item w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/60">
+            <div class="flex items-center space-x-3">
+              <i class="fa-solid fa-server w-5 text-center"></i>
+              <span>Private Registry</span>
+            </div>
+            <span id="sidebar-registry-badge" class="text-[10px] bg-slate-800 text-emerald-400 px-2 py-0.5 rounded-full border border-slate-700 font-mono">0</span>
+          </button>
+          <div id="sidebar-registry-repo-list" class="mt-1 ml-4 pl-3 border-l border-slate-800 space-y-1 max-h-48 overflow-y-auto hidden">
+            <!-- Dynamic repos list -->
+          </div>
+        </div>
+
+        <div class="pt-4 px-3 py-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">System</div>
+
+        <button onclick="switchView('settings')" id="nav-settings" class="nav-item w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/60">
+          <i class="fa-solid fa-sliders w-5 text-center"></i>
+          <span>System & Settings</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- User / Status Badge Footer -->
+    <div class="p-4 border-t border-slate-800/80 bg-slate-900/30">
+      <div class="flex items-center space-x-3 bg-slate-950 p-3 rounded-xl border border-slate-800">
+        <div class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></div>
+        <div class="overflow-hidden">
+          <p class="text-xs font-semibold text-white truncate">Engine Connected</p>
+          <p class="text-[10px] text-slate-400 truncate">v24.0 Local Daemon</p>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT AREA -->
+  <div class="flex-1 flex flex-col overflow-hidden">
+    
+    <!-- Top Header -->
+    <header class="h-16 bg-slate-900/50 border-b border-slate-800/80 px-8 flex items-center justify-between shrink-0 backdrop-blur">
+      <div class="flex items-center space-x-4">
+        <h2 class="text-lg font-bold text-white" id="page-title">Dashboard Overview</h2>
+        <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-800 text-slate-400 border border-slate-700" id="page-subtitle">Real-time Monitor</span>
+      </div>
+
+      <div class="flex items-center space-x-3">
+        <button onclick="fetchData()" class="bg-sky-600 hover:bg-sky-500 text-white px-3.5 py-2 rounded-xl text-sm font-medium flex items-center space-x-2 transition shadow-lg shadow-sky-600/20 active:scale-95">
+          <i class="fa-solid fa-arrows-rotate" id="refresh-icon"></i>
+          <span>Sync Data</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Scrollable Content View -->
+    <main class="flex-1 overflow-y-auto p-8 space-y-8">
+
+      <!-- SECTION 1: DASHBOARD OVERVIEW -->
+      <section id="view-overview" class="space-y-8">
+        <!-- Stats Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl flex items-center justify-between hover:border-slate-700 transition">
+            <div>
+              <p class="text-slate-400 text-xs font-semibold uppercase tracking-wider">Total Registry</p>
+              <h3 class="text-3xl font-black text-emerald-400 mt-2" id="stat-total-registry">0</h3>
+              <p class="text-[11px] text-slate-500 mt-1">Repos in private registry</p>
+            </div>
+            <div class="bg-emerald-500/10 p-4 rounded-2xl text-emerald-400 border border-emerald-500/20">
+              <i class="fa-solid fa-server text-2xl"></i>
+            </div>
+          </div>
+
+          <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl flex items-center justify-between hover:border-slate-700 transition">
+            <div>
+              <p class="text-slate-400 text-xs font-semibold uppercase tracking-wider">Total Disk Used</p>
+              <h3 class="text-3xl font-black text-amber-400 mt-2" id="stat-total-size">0 MB</h3>
+              <p class="text-[11px] text-slate-500 mt-1">Total size of registry images</p>
+            </div>
+            <div class="bg-amber-500/10 p-4 rounded-2xl text-amber-400 border border-amber-500/20">
+              <i class="fa-solid fa-hard-drive text-2xl"></i>
+            </div>
+          </div>
+
+          <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl flex items-center justify-between hover:border-slate-700 transition">
+            <div>
+              <p class="text-slate-400 text-xs font-semibold uppercase tracking-wider">Registry Status</p>
+              <div class="mt-2">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <span class="w-2 h-2 mr-2 rounded-full bg-emerald-400 animate-pulse"></span> V2 Ready
+                </span>
+              </div>
+              <p class="text-[11px] text-slate-500 mt-2">HTTP Endpoint Active</p>
+            </div>
+            <div class="bg-indigo-500/10 p-4 rounded-2xl text-indigo-400 border border-indigo-500/20">
+              <i class="fa-solid fa-network-wired text-2xl"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Summary Cards -->
+        <div>
+          <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+              <h3 class="font-bold text-white flex items-center space-x-2">
+                <i class="fa-solid fa-server text-emerald-400"></i>
+                <span>Private Registry Quick Catalog</span>
+              </h3>
+              <button onclick="switchView('registry')" class="text-xs text-emerald-400 hover:text-emerald-300 font-semibold">Explore Registry →</button>
+            </div>
+            <div id="overview-registry-quick" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <p class="text-slate-500 text-sm italic">Loading registry catalog...</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 2: LOCAL ENGINE IMAGES -->
+      <section id="view-local" class="space-y-6 hidden">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div class="relative flex-1 max-w-md">
+            <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3 text-slate-500 text-sm"></i>
+            <input type="text" id="search-input" onkeyup="filterImages()" placeholder="Cari nama image, tag, ID..." 
+                   class="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500 transition">
+          </div>
+          <span class="text-xs font-semibold text-slate-400 bg-slate-900 px-3 py-2 rounded-xl border border-slate-800" id="local-count-badge">0 Images found</span>
+        </div>
+
+        <div class="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm text-slate-300">
+              <thead class="bg-slate-950 text-slate-400 uppercase text-[11px] font-bold tracking-wider border-b border-slate-800">
+                <tr>
+                  <th class="px-6 py-4">Repository</th>
+                  <th class="px-6 py-4">Tag</th>
+                  <th class="px-6 py-4">Image ID</th>
+                  <th class="px-6 py-4">Size</th>
+                  <th class="px-6 py-4">Created</th>
+                  <th class="px-6 py-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="images-table-body" class="divide-y divide-slate-800/60">
+                <tr>
+                  <td colspan="6" class="px-6 py-12 text-center text-slate-500">
+                    <i class="fa-solid fa-circle-notch fa-spin text-2xl text-sky-400 mb-2"></i>
+                    <p>Memuat daftar Docker Images...</p>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 3: PRIVATE REGISTRY -->
+      <section id="view-registry" class="space-y-6 hidden">
+        <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-4 shadow-xl">
+          <div class="flex items-center justify-between">
+            <h2 class="text-base font-bold text-white flex items-center space-x-2">
+              <i class="fa-solid fa-network-wired text-sky-400"></i>
+              <span>Local Docker Registry HTTP V2 Endpoint</span>
+            </h2>
+            <span class="text-xs text-slate-400">API Standard: <code>/v2/_catalog</code></span>
+          </div>
+
+          <div class="flex gap-3 max-w-2xl">
+            <div class="relative flex-1">
+              <i class="fa-solid fa-globe absolute left-3.5 top-3 text-slate-500 text-sm"></i>
+              <input type="text" id="registry-url" value="" placeholder="http://localhost:5000" 
+                     class="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-sky-500 transition font-mono">
+            </div>
+            <button onclick="fetchRegistryData()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition shadow-lg shadow-emerald-600/20 active:scale-95 flex items-center space-x-2">
+              <i class="fa-solid fa-plug"></i>
+              <span>Fetch Catalog</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="registry-content" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl">
+            <h3 class="text-sm font-bold text-slate-200 mb-4 flex items-center justify-between">
+              <span>Repositories Catalog</span>
+              <span class="text-xs bg-slate-800 text-slate-300 px-2.5 py-0.5 rounded-full border border-slate-700" id="registry-repo-count">0</span>
+            </h3>
+            <div id="registry-repo-list" class="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+              <p class="text-slate-500 text-sm italic">Klik "Fetch Catalog" untuk memuat repositori.</p>
+            </div>
+          </div>
+
+          <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl">
+            <h3 class="text-sm font-bold text-slate-200 mb-4">Repository Tags & Docker Commands</h3>
+            <div id="registry-tag-list" class="text-slate-400 text-sm">
+              <div class="p-8 text-center border-2 border-dashed border-slate-800 rounded-xl">
+                <i class="fa-solid fa-terminal text-3xl text-slate-700 mb-2"></i>
+                <p class="text-slate-500">Pilih salah satu repositori untuk melihat tag & perintah Build/Push/Pull.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 4: SYSTEM & SETTINGS -->
+      <section id="view-settings" class="space-y-6 hidden">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl space-y-4">
+            <h3 class="text-base font-bold text-white flex items-center space-x-2 border-b border-slate-800 pb-3">
+              <i class="fa-solid fa-sliders text-sky-400"></i>
+              <span>Pengaturan Aplikasi</span>
+            </h3>
+            <div class="space-y-3">
+              <div>
+                <label class="block text-xs font-semibold text-slate-400 mb-1">Default Registry Server URL</label>
+                <input type="text" id="setting-default-registry" value="" placeholder="http://10.0.3.51:5000" 
+                       class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500 font-mono">
+              </div>
+              <button onclick="saveSettings()" class="bg-sky-600 hover:bg-sky-500 text-white px-4 py-2 rounded-xl text-sm font-semibold transition">
+                Simpan Pengaturan
+              </button>
+            </div>
+          </div>
+
+          <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl space-y-4">
+            <h3 class="text-base font-bold text-white flex items-center space-x-2 border-b border-slate-800 pb-3">
+              <i class="fa-solid fa-server text-emerald-400"></i>
+              <span>System & Environment Info</span>
+            </h3>
+            <div class="space-y-2 text-xs font-mono text-slate-300">
+              <div class="flex justify-between py-1.5 border-b border-slate-800/50">
+                <span class="text-slate-500">Backend API Endpoint:</span>
+                <span class="text-emerald-400">Node.js Express (/api/images)</span>
+              </div>
+              <div class="flex justify-between py-1.5 border-b border-slate-800/50">
+                <span class="text-slate-500">Docker Protocol:</span>
+                <span>Local Socket / REST Proxy</span>
+              </div>
+              <div class="flex justify-between py-1.5 border-b border-slate-800/50">
+                <span class="text-slate-500">Tailwind CSS Version:</span>
+                <span>3.x CDN Play</span>
+              </div>
+              <div class="flex justify-between py-1.5">
+                <span class="text-slate-500">Client Platform:</span>
+                <span id="system-user-agent">Browser Engine</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script>
+    let localImages = [];
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      document.getElementById('system-user-agent').innerText = navigator.platform || 'Web Browser';
+      
+      const savedRegistryUrl = localStorage.getItem('defaultRegistryUrl');
+      if (savedRegistryUrl) {
+        document.getElementById('registry-url').value = savedRegistryUrl;
+        document.getElementById('setting-default-registry').value = savedRegistryUrl;
+      } else {
+        try {
+          const res = await fetch('/api/config');
+          const config = await res.json();
+          if (config && config.status === 'success' && config.defaultRegistryUrl) {
+            document.getElementById('registry-url').value = config.defaultRegistryUrl;
+            document.getElementById('setting-default-registry').value = config.defaultRegistryUrl;
+          }
+        } catch (e) {}
+      }
+
+      fetchData();
+      fetchRegistryData();
+    });
+
+    // NAVIGATION SYSTEM
+    function switchView(viewName) {
+      const views = ['overview', 'local', 'registry', 'settings'];
+      const titles = {
+        overview: 'Dashboard Overview',
+        local: 'Local Engine Images',
+        registry: 'Private Registry Monitor',
+        settings: 'System & Settings'
+      };
+
+      views.forEach(v => {
+        const sec = document.getElementById(`view-${v}`);
+        const nav = document.getElementById(`nav-${v}`);
+        
+        if (v === viewName) {
+          if (sec) sec.classList.remove('hidden');
+          if (nav) nav.className = 'nav-item w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-sky-400 bg-sky-500/10 border border-sky-500/20';
+        } else {
+          if (sec) sec.classList.add('hidden');
+          if (nav) nav.className = 'nav-item w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/60';
+        }
+      });
+
+      document.getElementById('page-title').innerText = titles[viewName];
+    }
+
+    // DATA FETCHING
+    async function fetchData() {
+      const refreshIcon = document.getElementById('refresh-icon');
+      refreshIcon.classList.add('fa-spin');
+      
+      try {
+        const res = await fetch('/api/images');
+        const data = await res.json();
+        
+        if (data.status === 'success') {
+          localImages = data.data;
+          renderImagesTable(localImages);
+          updateStats(localImages);
+          renderOverviewRecent(localImages);
+          showToast('Data Docker Images berhasil diperbarui!', 'success');
+        } else {
+          showToast('Gagal memuat image: ' + data.message, 'error');
+        }
+      } catch (err) {
+        showToast('Gagal terhubung ke backend API Express', 'error');
+      } finally {
+        setTimeout(() => refreshIcon.classList.remove('fa-spin'), 500);
+      }
+    }
+
+    function renderImagesTable(images) {
+      const tbody = document.getElementById('images-table-body');
+      document.getElementById('local-count-badge').innerText = `${images.length} Images found`;
+      
+      if (images.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="px-6 py-12 text-center text-slate-500">
+              <i class="fa-solid fa-box-open text-3xl text-slate-700 mb-2"></i>
+              <p>Tidak ada Docker images di engine lokal.</p>
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      tbody.innerHTML = images.map(img => {
+        const shortId = img.id.replace('sha256:', '').substring(0, 12);
+        return `
+          <tr class="hover:bg-slate-800/40 transition group">
+            <td class="px-6 py-4 font-semibold text-white flex items-center space-x-3">
+              <div class="p-2 bg-sky-500/10 rounded-lg text-sky-400 group-hover:scale-105 transition">
+                <i class="fa-solid fa-box"></i>
+              </div>
+              <span class="truncate max-w-xs">${escapeHtml(img.repository)}</span>
+            </td>
+            <td class="px-6 py-4">
+              <span class="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-800 text-sky-300 border border-slate-700">
+                ${escapeHtml(img.tag)}
+              </span>
+            </td>
+            <td class="px-6 py-4 font-mono text-slate-400 text-xs">
+              <button onclick="copyToClipboard('${shortId}', 'Image ID')" class="hover:text-sky-400 flex items-center space-x-1.5 bg-slate-950 px-2 py-1 rounded-md border border-slate-800/80 transition" title="Copy Image ID">
+                <span>${shortId}</span>
+                <i class="fa-regular fa-copy text-[10px] text-slate-500"></i>
+              </button>
+            </td>
+            <td class="px-6 py-4 text-slate-300 font-medium">${escapeHtml(img.size)}</td>
+            <td class="px-6 py-4 text-slate-400 text-xs">${escapeHtml(img.created)}</td>
+            <td class="px-6 py-4 text-right space-x-2">
+              <button onclick="confirmDeleteImage('${img.id}', false)" title="Delete Image" class="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 p-2 rounded-xl transition">
+                <i class="fa-solid fa-trash"></i>
+              </button>
+              <button onclick="confirmDeleteImage('${img.id}', true)" title="Force Delete Image" class="text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 p-2 rounded-xl transition">
+                <i class="fa-solid fa-bolt"></i>
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderOverviewRecent(images) {
+      const container = document.getElementById('overview-recent-list');
+      if (!container) return;
+      const recent = images.slice(0, 5);
+      
+      if (recent.length === 0) {
+        container.innerHTML = '<p class="text-slate-500 text-sm italic">Belum ada data image.</p>';
+        return;
+      }
+
+      container.innerHTML = recent.map(img => `
+        <div class="flex items-center justify-between p-3 bg-slate-950 rounded-xl border border-slate-800">
+          <div class="flex items-center space-x-3 overflow-hidden">
+            <i class="fa-solid fa-box text-sky-400 text-sm"></i>
+            <div class="truncate">
+              <p class="text-xs font-semibold text-slate-200 truncate">${escapeHtml(img.repository)}</p>
+              <p class="text-[10px] text-slate-500">Tag: ${escapeHtml(img.tag)} • ${escapeHtml(img.size)}</p>
+            </div>
+          </div>
+          <span class="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-1 rounded border border-slate-800">${img.id.replace('sha256:', '').substring(0, 8)}</span>
+        </div>
+      `).join('');
+    }
+
+    function updateStats(images) {
+      const statTotal = document.getElementById('stat-total-images');
+      if (statTotal) statTotal.innerText = images.length;
+    }
+
+    function filterImages() {
+      const query = document.getElementById('search-input').value.toLowerCase();
+      const filtered = localImages.filter(img => 
+        img.repository.toLowerCase().includes(query) ||
+        img.tag.toLowerCase().includes(query) ||
+        img.id.toLowerCase().includes(query)
+      );
+      renderImagesTable(filtered);
+    }
+
+    // REGISTRY DATA FETCHING
+    async function fetchRegistryData() {
+      const url = document.getElementById('registry-url').value;
+      const repoListContainer = document.getElementById('registry-repo-list');
+      const overviewQuick = document.getElementById('overview-registry-quick');
+      const repoCount = document.getElementById('registry-repo-count');
+      const sidebarList = document.getElementById('sidebar-registry-repo-list');
+      const sidebarBadge = document.getElementById('sidebar-registry-badge');
+      const statSizeEl = document.getElementById('stat-total-size');
+      
+      repoListContainer.innerHTML = '<p class="text-slate-400 text-sm">Memuat katalog...</p>';
+      
+      // Asynchronously calculate total registry storage size
+      fetch(`/api/registry/size?url=${encodeURIComponent(url)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === 'success' && statSizeEl) {
+            statSizeEl.innerText = formatBytes(data.totalBytes) || '0 MB';
+          }
+        })
+        .catch(() => {});
+      
+      try {
+        const res = await fetch(`/api/registry/catalog?url=${encodeURIComponent(url)}`);
+        const data = await res.json();
+
+        if (data.status === 'success') {
+          const repos = data.repositories;
+          repoCount.innerText = repos.length;
+          if (sidebarBadge) sidebarBadge.innerText = repos.length;
+          const statReg = document.getElementById('stat-total-registry');
+          if (statReg) statReg.innerText = repos.length;
+
+          if (sidebarList) {
+            if (repos.length > 0) {
+              sidebarList.classList.remove('hidden');
+              sidebarList.innerHTML = repos.map(repo => `
+                <div onclick="switchView('registry'); fetchRepoTags('${url}', '${escapeHtml(repo)}');" 
+                     class="px-2 py-1 text-xs text-slate-400 hover:text-sky-300 hover:bg-slate-800/60 rounded-md cursor-pointer truncate transition flex items-center space-x-2">
+                  <i class="fa-solid fa-folder text-[10px] text-amber-400 shrink-0"></i>
+                  <span class="truncate">${escapeHtml(repo)}</span>
+                </div>
+              `).join('');
+            } else {
+              sidebarList.classList.add('hidden');
+            }
+          }
+
+          if (repos.length === 0) {
+            repoListContainer.innerHTML = '<p class="text-slate-400 text-sm">Tidak ada repositori ditemukan di registry.</p>';
+            overviewQuick.innerHTML = '<p class="text-slate-500 text-sm italic">Katalog registry kosong.</p>';
+            return;
+          }
+
+          repoListContainer.innerHTML = repos.map(repo => `
+            <div onclick="fetchRepoTags('${url}', '${escapeHtml(repo)}')" 
+                 class="p-3.5 bg-slate-950 hover:bg-slate-800 rounded-xl cursor-pointer border border-slate-800 flex justify-between items-center transition group">
+              <div class="flex items-center space-x-3">
+                <i class="fa-solid fa-folder text-amber-400 group-hover:scale-110 transition"></i>
+                <span class="font-medium text-slate-200 text-sm">${escapeHtml(repo)}</span>
+              </div>
+              <i class="fa-solid fa-chevron-right text-xs text-slate-600 group-hover:text-sky-400 transition"></i>
+            </div>
+          `).join('');
+
+          overviewQuick.innerHTML = repos.slice(0, 4).map(repo => `
+            <div onclick="switchView('registry'); fetchRepoTags('${url}', '${escapeHtml(repo)}');" class="p-3 bg-slate-950 rounded-xl border border-slate-800 flex items-center justify-between cursor-pointer hover:border-slate-700 transition">
+              <span class="text-xs font-semibold text-slate-200">${escapeHtml(repo)}</span>
+              <span class="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Explore</span>
+            </div>
+          `).join('');
+
+          showToast(`Katalog registry (${repos.length} repo) dimuat!`, 'success');
+        } else {
+          repoListContainer.innerHTML = `<p class="text-rose-400 text-sm">Error: ${data.message}</p>`;
+          showToast('Gagal memuat katalog registry', 'error');
+        }
+      } catch (err) {
+        repoListContainer.innerHTML = `<p class="text-rose-400 text-sm">Gagal terhubung ke registry ${url}</p>`;
+        showToast('Koneksi registry gagal', 'error');
+      }
+    }
+
+    async function fetchRepoTags(url, repoName) {
+      const tagListContainer = document.getElementById('registry-tag-list');
+      tagListContainer.innerHTML = `<p class="text-slate-400 text-sm">Memuat tag & metadata untuk <b>${escapeHtml(repoName)}</b>...</p>`;
+
+      try {
+        const res = await fetch(`/api/registry/tags?url=${encodeURIComponent(url)}&name=${encodeURIComponent(repoName)}`);
+        const data = await res.json();
+
+        if (data.status === 'success') {
+          const tags = data.tags || [];
+          const tagDetails = data.tagDetails || tags.map(t => ({ tag: t, created: null, size: null }));
+
+          if (tags.length === 0) {
+            tagListContainer.innerHTML = `<p class="text-slate-400 text-sm">Tidak ada tag ditemukan untuk <b>${escapeHtml(repoName)}</b>.</p>`;
+            return;
+          }
+
+          const registryHost = url.replace('http://', '').replace('https://', '').replace(/\/+$/, '');
+          const firstTag = tags[0];
+          const firstBuildCmd = `docker build -t ${registryHost}/${repoName}:${firstTag} .`;
+          const firstPushCmd = `docker push ${registryHost}/${repoName}:${firstTag}`;
+          const firstPullCmd = `docker pull ${registryHost}/${repoName}:${firstTag}`;
+
+          tagListContainer.innerHTML = `
+            <div class="space-y-4">
+              <div class="font-bold text-slate-200 border-b border-slate-800 pb-3 flex items-center justify-between">
+                <span>Repository: <span class="text-sky-400 font-mono">${escapeHtml(repoName)}</span></span>
+                <span class="text-xs bg-sky-500/10 text-sky-300 border border-sky-500/20 px-2.5 py-0.5 rounded-full">${tags.length} tags</span>
+              </div>
+              
+              <div class="space-y-2">
+                <label class="text-xs font-semibold text-slate-400">Available Tags & Details:</label>
+                <div class="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
+                  ${tagDetails.map(item => {
+                    const tagBuildCmd = `docker build -t ${registryHost}/${repoName}:${item.tag} .`;
+                    const tagPushCmd = `docker push ${registryHost}/${repoName}:${item.tag}`;
+                    const tagPullCmd = `docker pull ${registryHost}/${repoName}:${item.tag}`;
+                    const dateFormatted = formatDate(item.created);
+                    const sizeFormatted = formatBytes(item.size);
+
+                    return `
+                      <div class="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border-b border-slate-800/80 pb-2">
+                          <div class="flex items-center space-x-2">
+                            <span class="px-2.5 py-0.5 bg-slate-900 border border-slate-700 rounded-lg text-xs font-mono text-emerald-400 font-bold">
+                              <i class="fa-solid fa-tag text-[10px] text-slate-400 mr-1"></i>${escapeHtml(item.tag)}
+                            </span>
+                            ${sizeFormatted ? `<span class="text-[11px] text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800 font-mono">${sizeFormatted}</span>` : ''}
+                          </div>
+                          <div class="text-[11px] text-slate-400 flex items-center space-x-1.5">
+                            <i class="fa-regular fa-clock text-[10px] text-sky-400"></i>
+                            <span>Push Date: <strong class="text-slate-200 font-normal">${dateFormatted}</strong></span>
+                          </div>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-2">
+                          <button onclick="copyToClipboard('${escapeHtml(tagBuildCmd)}', 'Docker Build Command')" 
+                                  class="bg-slate-900 hover:bg-amber-500/10 hover:border-amber-500/30 border border-slate-800 px-2 py-1.5 rounded-lg text-[11px] text-slate-300 transition flex items-center justify-center space-x-1.5">
+                            <i class="fa-solid fa-hammer text-amber-400 text-[10px]"></i>
+                            <span>Build</span>
+                          </button>
+                          <button onclick="copyToClipboard('${escapeHtml(tagPushCmd)}', 'Docker Push Command')" 
+                                  class="bg-slate-900 hover:bg-emerald-500/10 hover:border-emerald-500/30 border border-slate-800 px-2 py-1.5 rounded-lg text-[11px] text-slate-300 transition flex items-center justify-center space-x-1.5">
+                            <i class="fa-solid fa-cloud-arrow-up text-emerald-400 text-[10px]"></i>
+                            <span>Push</span>
+                          </button>
+                          <button onclick="copyToClipboard('${escapeHtml(tagPullCmd)}', 'Docker Pull Command')" 
+                                  class="bg-slate-900 hover:bg-sky-500/10 hover:border-sky-500/30 border border-slate-800 px-2 py-1.5 rounded-lg text-[11px] text-slate-300 transition flex items-center justify-center space-x-1.5">
+                            <i class="fa-solid fa-cloud-arrow-down text-sky-400 text-[10px]"></i>
+                            <span>Pull</span>
+                          </button>
+                        </div>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              </div>
+
+              <div class="space-y-2 pt-3 border-t border-slate-800">
+                <label class="text-xs font-semibold text-slate-400 flex items-center space-x-1.5">
+                  <i class="fa-solid fa-terminal text-sky-400 text-xs"></i>
+                  <span>Quick CLI Commands (${escapeHtml(firstTag)}):</span>
+                </label>
+                
+                <div class="space-y-2">
+                  <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 font-mono text-xs flex items-center justify-between">
+                    <div class="flex items-center space-x-2 truncate mr-2">
+                      <span class="text-[10px] uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 font-sans font-semibold shrink-0">Build</span>
+                      <code class="text-slate-300 truncate">${escapeHtml(firstBuildCmd)}</code>
+                    </div>
+                    <button onclick="copyToClipboard('${escapeHtml(firstBuildCmd)}', 'Build Command')" class="bg-slate-900 hover:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700 text-slate-300 text-xs font-sans transition shrink-0">
+                      <i class="fa-regular fa-copy"></i>
+                    </button>
+                  </div>
+
+                  <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 font-mono text-xs flex items-center justify-between">
+                    <div class="flex items-center space-x-2 truncate mr-2">
+                      <span class="text-[10px] uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-sans font-semibold shrink-0">Push</span>
+                      <code class="text-slate-300 truncate">${escapeHtml(firstPushCmd)}</code>
+                    </div>
+                    <button onclick="copyToClipboard('${escapeHtml(firstPushCmd)}', 'Push Command')" class="bg-slate-900 hover:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700 text-slate-300 text-xs font-sans transition shrink-0">
+                      <i class="fa-regular fa-copy"></i>
+                    </button>
+                  </div>
+
+                  <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 font-mono text-xs flex items-center justify-between">
+                    <div class="flex items-center space-x-2 truncate mr-2">
+                      <span class="text-[10px] uppercase tracking-wider text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20 font-sans font-semibold shrink-0">Pull</span>
+                      <code class="text-slate-300 truncate">${escapeHtml(firstPullCmd)}</code>
+                    </div>
+                    <button onclick="copyToClipboard('${escapeHtml(firstPullCmd)}', 'Pull Command')" class="bg-slate-900 hover:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700 text-slate-300 text-xs font-sans transition shrink-0">
+                      <i class="fa-regular fa-copy"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        } else {
+          tagListContainer.innerHTML = `<p class="text-rose-400 text-sm">Error: ${data.message}</p>`;
+        }
+      } catch (err) {
+        tagListContainer.innerHTML = `<p class="text-rose-400 text-sm">Gagal memuat tag.</p>`;
+      }
+    }
+
+    // MODAL & TOAST HELPERS
+    function confirmDeleteImage(imageId, force) {
+      const actionTitle = force ? 'Force Delete Image' : 'Hapus Image';
+      const actionMsg = `Apakah Anda yakin ingin ${force ? 'memaksa menghapus (force delete)' : 'menghapus'} image ID ${imageId.substring(0, 12)}?`;
+
+      showConfirmModal(actionTitle, actionMsg, async () => {
+        try {
+          const res = await fetch(`/api/images/${encodeURIComponent(imageId)}?force=${force}`, { method: 'DELETE' });
+          const data = await res.json();
+          
+          if (data.status === 'success') {
+            showToast('Image berhasil dihapus!', 'success');
+            fetchData();
+          } else {
+            showToast('Gagal menghapus image: ' + data.message, 'error');
+          }
+        } catch (err) {
+          showToast('Network error saat mencoba menghapus image.', 'error');
+        }
+      });
+    }
+
+    function showConfirmModal(title, message, onConfirm) {
+      const modal = document.getElementById('custom-modal');
+      document.getElementById('modal-title').innerText = title;
+      document.getElementById('modal-message').innerText = message;
+
+      const confirmBtn = document.getElementById('modal-confirm-btn');
+      confirmBtn.onclick = () => {
+        closeModal();
+        onConfirm();
+      };
+
+      modal.classList.remove('hidden');
+      setTimeout(() => {
+        modal.classList.remove('opacity-0', 'pointer-events-none');
+      }, 10);
+    }
+
+    function closeModal() {
+      const modal = document.getElementById('custom-modal');
+      modal.classList.add('opacity-0', 'pointer-events-none');
+      setTimeout(() => {
+        modal.classList.add('hidden');
+      }, 200);
+    }
+
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      
+      const bgColors = {
+        success: 'bg-emerald-950 border-emerald-800 text-emerald-200',
+        error: 'bg-rose-950 border-rose-800 text-rose-200',
+        info: 'bg-sky-950 border-sky-800 text-sky-200'
+      };
+
+      const icons = {
+        success: 'fa-circle-check text-emerald-400',
+        error: 'fa-circle-xmark text-rose-400',
+        info: 'fa-circle-info text-sky-400'
+      };
+
+      toast.className = `p-4 rounded-xl border shadow-2xl flex items-center space-x-3 text-sm font-medium transition-all duration-300 transform translate-y-2 opacity-0 pointer-events-auto ${bgColors[type] || bgColors.info}`;
+      toast.innerHTML = `
+        <i class="fa-solid ${icons[type] || icons.info} text-lg"></i>
+        <span>${escapeHtml(message)}</span>
+      `;
+
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      }, 10);
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-[-10px]');
+        setTimeout(() => toast.remove(), 300);
+      }, 4000);
+    }
+
+    function copyToClipboard(text, label = 'Teks') {
+      navigator.clipboard.writeText(text).then(() => {
+        showToast(`${label} telah disalin ke clipboard!`, 'success');
+      }).catch(() => {
+        showToast('Gagal menyalin ke clipboard', 'error');
+      });
+    }
+
+    function saveSettings() {
+      const val = document.getElementById('setting-default-registry').value;
+      localStorage.setItem('defaultRegistryUrl', val);
+      document.getElementById('registry-url').value = val;
+      showToast('Pengaturan registry URL berhasil disimpan!', 'success');
+      fetchRegistryData();
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      const div = document.createElement('div');
+      div.innerText = str;
+      return div.innerHTML;
+    }
+
+    function formatDate(isoStr) {
+      if (!isoStr) return 'Waktu tidak diketahui';
+      try {
+        const d = new Date(isoStr);
+        if (isNaN(d.getTime())) return isoStr;
+        return d.toLocaleString('id-ID', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      } catch (e) {
+        return isoStr;
+      }
+    }
+
+    function formatBytes(bytes) {
+      if (!bytes || bytes === 0) return '';
+      const mb = bytes / (1024 * 1024);
+      if (mb >= 1024) {
+        return (mb / 1024).toFixed(2) + ' GB';
+      }
+      return mb.toFixed(1) + ' MB';
+    }
+  </script>
+</body>
+</html>
