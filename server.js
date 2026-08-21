@@ -187,7 +187,7 @@ const runCommand = (cmd) => {
 app.get('/api/config', (req, res) => {
   res.json({
     status: 'success',
-    defaultRegistryUrl: process.env.DEFAULT_REGISTRY_URL || 'http://10.0.3.51:5000'
+    defaultRegistryUrl: process.env.DEFAULT_REGISTRY_URL || 'http://localhost:5000'
   });
 });
 
@@ -257,9 +257,9 @@ app.get('/api/system/info', async (req, res) => {
   }
 });
 
-// API: Query a Docker Registry V2 if user inputs custom registry URL (e.g. 10.0.3.51:5000)
+// API: Query a Docker Registry V2 if user inputs custom registry URL (e.g. localhost:5000)
 app.get('/api/registry/catalog', async (req, res) => {
-  let registryUrl = (req.query.url || process.env.DEFAULT_REGISTRY_URL || 'http://10.0.3.51:5000').trim();
+  let registryUrl = (req.query.url || process.env.DEFAULT_REGISTRY_URL || 'http://localhost:5000').trim();
   if (!/^https?:\/\//i.test(registryUrl)) {
     registryUrl = 'http://' + registryUrl;
   }
@@ -274,7 +274,7 @@ app.get('/api/registry/catalog', async (req, res) => {
 
 // API: Calculate total size of all images in Docker Registry V2
 app.get('/api/registry/size', async (req, res) => {
-  let registryUrl = (req.query.url || process.env.DEFAULT_REGISTRY_URL || 'http://10.0.3.51:5000').trim();
+  let registryUrl = (req.query.url || process.env.DEFAULT_REGISTRY_URL || 'http://localhost:5000').trim();
   if (!/^https?:\/\//i.test(registryUrl)) {
     registryUrl = 'http://' + registryUrl;
   }
@@ -347,7 +347,7 @@ app.get('/api/registry/size', async (req, res) => {
 
 // API: Get tags for a specific repository in Docker Registry V2
 app.get('/api/registry/tags', async (req, res) => {
-  let registryUrl = (req.query.url || process.env.DEFAULT_REGISTRY_URL || 'http://10.0.3.51:5000').trim();
+  let registryUrl = (req.query.url || process.env.DEFAULT_REGISTRY_URL || 'http://localhost:5000').trim();
   if (!/^https?:\/\//i.test(registryUrl)) {
     registryUrl = 'http://' + registryUrl;
   }
